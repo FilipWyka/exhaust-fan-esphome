@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 830" font-family="Helvetica, Arial, sans-serif" font-size="18">
+  <rect width="1200" height="830" fill="#ffffff"/>
+  <text x="600" y="40" text-anchor="middle" font-size="26" font-weight="bold" fill="#222">Exhaust fan controller – wiring</text>
+
+  <!-- PSU -->
+  <rect x="40" y="110" width="190" height="110" rx="10" fill="#eef2f7" stroke="#334" stroke-width="2"/>
+  <text x="135" y="150" text-anchor="middle" font-weight="bold">12 V 2 A PSU</text>
+  <text x="135" y="178" text-anchor="middle" font-size="15">5.5/2.1 DC socket</text>
+  <text x="245" y="130" font-size="15" fill="#c62828">+12 V</text>
+  <text x="245" y="222" font-size="15" fill="#111">GND</text>
+
+  <!-- MP1584 -->
+  <rect x="330" y="300" width="190" height="110" rx="10" fill="#eef2f7" stroke="#334" stroke-width="2"/>
+  <text x="425" y="340" text-anchor="middle" font-weight="bold">MP1584</text>
+  <text x="425" y="366" text-anchor="middle" font-size="15">step-down 12 → 5 V</text>
+  <text x="425" y="392" text-anchor="middle" font-size="15" fill="#c62828" font-weight="bold">set 5.0 V first!</text>
+
+  <!-- ESP32 -->
+  <rect x="330" y="470" width="260" height="250" rx="10" fill="#e8f5e9" stroke="#334" stroke-width="2"/>
+  <text x="460" y="505" text-anchor="middle" font-weight="bold">ESP32 DevKit V1 (30-pin)</text>
+  <text x="350" y="550" font-size="16">VIN</text>
+  <text x="350" y="585" font-size="16">GND</text>
+  <text x="350" y="620" font-size="16">3V3</text>
+  <text x="570" y="610" font-size="16" text-anchor="end">GPIO25 (PWM)</text>
+  <text x="570" y="650" font-size="16" text-anchor="end">GPIO32 (tach 1)</text>
+  <text x="570" y="690" font-size="16" text-anchor="end">GPIO27 (tach 2)</text>
+
+  <!-- Fans -->
+  <rect x="880" y="110" width="270" height="200" rx="10" fill="#fff8e1" stroke="#334" stroke-width="2"/>
+  <text x="1015" y="145" text-anchor="middle" font-weight="bold">Fan 1 (4-pin)</text>
+  <text x="900" y="180" font-size="16">1 GND (black)</text>
+  <text x="900" y="210" font-size="16">2 +12 V (yellow)</text>
+  <text x="900" y="240" font-size="16">3 tach (green)</text>
+  <text x="900" y="270" font-size="16">4 PWM (blue)</text>
+  <rect x="880" y="380" width="270" height="200" rx="10" fill="#fff8e1" stroke="#334" stroke-width="2"/>
+  <text x="1015" y="415" text-anchor="middle" font-weight="bold">Fan 2 (4-pin)</text>
+  <text x="900" y="450" font-size="16">1 GND (black)</text>
+  <text x="900" y="480" font-size="16">2 +12 V (yellow)</text>
+  <text x="900" y="510" font-size="16">3 tach (green)</text>
+  <text x="900" y="540" font-size="16">4 PWM (blue)</text>
+
+  <g fill="none" stroke-width="3">
+    <!-- +12V rail -->
+    <path d="M230 140 H760 V205 H880 M760 205 V475 H880" stroke="#c62828"/>
+    <path d="M300 140 V330 H330" stroke="#c62828"/>
+    <!-- GND rail -->
+    <path d="M230 200 H730 V175 H880 M730 200 V445 H880" stroke="#111"/>
+    <path d="M280 200 V385 H330" stroke="#111"/>
+    <path d="M280 385 V580 H330" stroke="#111"/>
+    <!-- 5V -->
+    <path d="M520 330 H560 V440 H310 V545 H330" stroke="#ef6c00"/>
+    <!-- PWM via diode -->
+    <path d="M590 605 H650" stroke="#1565c0"/>
+    <path d="M690 605 H800 V265 H880 M800 535 H880 M800 265 V605" stroke="#1565c0"/>
+    <!-- tach -->
+    <path d="M590 645 H840 V235 H880" stroke="#2e7d32"/>
+    <path d="M590 685 H860 V505 H880" stroke="#2e7d32"/>
+    <!-- pull-ups -->
+    <path d="M330 615 H300 V740 H630" stroke="#7b1fa2"/>
+  </g>
+  <!-- diode symbol: anode at fans (right), cathode (bar) at ESP (left) -->
+  <polygon points="690,590 690,620 660,605" fill="#1565c0"/>
+  <line x1="657" y1="588" x2="657" y2="622" stroke="#1565c0" stroke-width="4"/>
+  <line x1="650" y1="605" x2="657" y2="605" stroke="#1565c0" stroke-width="3"/>
+  <text x="672" y="580" text-anchor="middle" font-size="14">D1 BAT85 / 1N5819</text>
+  <text x="672" y="640" text-anchor="middle" font-size="13">stripe → ESP32</text>
+
+  <!-- pull-up resistors -->
+  <rect x="630" y="725" width="40" height="18" fill="#fff" stroke="#7b1fa2" stroke-width="2"/>
+  <text x="650" y="765" text-anchor="middle" font-size="14">R1, R2 10 kΩ</text>
+  <path d="M670 734 H840 V645 M670 734 H860 V685" fill="none" stroke="#7b1fa2" stroke-width="2" stroke-dasharray="6 4"/><circle cx="840" cy="645" r="5" fill="#2e7d32"/><circle cx="860" cy="685" r="5" fill="#2e7d32"/>
+  <text x="890" y="720" font-size="14" fill="#7b1fa2">pull-ups to 3.3 V only</text>
+  <text x="890" y="740" font-size="14" fill="#7b1fa2">(never 5 V / 12 V)</text>
+
+  <text x="40" y="795" font-size="15" fill="#555">Common ground: PSU, MP1584, ESP32, fans</text>
+  <text x="40" y="818" font-size="15" fill="#555">Without ESP32: fans on 12 V only → 100 %</text>
+</svg>

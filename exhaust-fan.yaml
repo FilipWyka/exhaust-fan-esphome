@@ -1,0 +1,92 @@
+# Exhaust fan controller – ESPHome package
+# Two 4-pin PWM fans (e.g. 2x Noctua NF-F12 industrialPPC-3000 PWM) in push-pull,
+# one shared PWM signal, two tach inputs for stall / mismatch detection.
+#
+# Use it as a remote package (see example.yaml) and override substitutions as needed.
+# https://github.com/FilipWyka/exhaust-fan-esphome
+
+substitutions:
+  pwm_pin: GPIO25        # through a Schottky diode, cathode (stripe) to this pin – see README
+  tach1_pin: GPIO32      # 10 kΩ pull-up to 3.3 V (never to 5 V / 12 V)
+  tach2_pin: GPIO27      # 10 kΩ pull-up to 3.3 V
+  pwm_frequency: 25000 Hz
+  # Measured with NF-F12 iPPC-3000: below ~9 % duty the fan sits at a fixed minimum
+  # (~270 RPM); min_power moves slider 1 % past that dead zone. 0 % = fans stop.
+  min_power: "0.09"
+  fault_rpm: "150"       # below this (while on) = stalled; fan minimum is ~260 RPM
+  fault_mismatch: "0.25" # relative RPM difference between the two fans
+  fault_delay: 15s
+
+output:
+  - platform: ledc
+    pin: ${pwm_pin}
+    id: exhaust_fan_pwm
+    frequency: ${pwm_frequency}
+    min_power: ${min_power}
+    zero_means_zero: true
+
+fan:
+  - platform: speed
+    id: exhaust_fans
+    output: exhaust_fan_pwm
+    name: "Fans"
+    icon: mdi:fan
+    restore_mode: RESTORE_DEFAULT_OFF
+
+sensor:
+  # Tach: open collector, 2 pulses per revolution.
+  - platform: pulse_counter
+    pin:
+      number: ${tach1_pin}
+      mode:
+        input: true
+        pullup: true   # backup only – the external 10 kΩ pull-up is required
+    id: exhaust_fan1_rpm
+    name: "Fan 1 speed"
+    unit_of_measurement: RPM
+    icon: mdi:fan
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    update_interval: 5s
+    filters:
+      - multiply: 0.5
+
+  - platform: pulse_counter
+    pin:
+      number: ${tach2_pin}
+      mode:
+        input: true
+        pullup: true
+    id: exhaust_fan2_rpm
+    name: "Fan 2 speed"
+    unit_of_measurement: RPM
+    icon: mdi:fan
+    accuracy_decimals: 0
+    entity_category: diagnostic
+    update_interval: 5s
+    filters:
+      - multiply: 0.5
+
+  - platform: wifi_signal
+    name: "WiFi signal"
+    entity_category: diagnostic
+    update_interval: 60s
+
+binary_sensor:
+  # Fault while the fans should be spinning: one of them below fault_rpm,
+  # or the two differ by more than fault_mismatch (push-pull loses airflow).
+  - platform: template
+    id: exhaust_fan_fault
+    name: "Fan fault"
+    device_class: problem
+    entity_category: diagnostic
+    lambda: |-
+      if (!id(exhaust_fans).state) return false;
+      const float a = id(exhaust_fan1_rpm).state;
+      const float b = id(exhaust_fan2_rpm).state;
+      if (std::isnan(a) || std::isnan(b)) return false;
+      if (a < ${fault_rpm} || b < ${fault_rpm}) return true;
+      const float hi = std::max(a, b);
+      return (hi - std::min(a, b)) / hi > ${fault_mismatch};
+    filters:
+      - delayed_on: ${fault_delay}

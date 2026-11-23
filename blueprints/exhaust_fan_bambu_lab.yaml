@@ -1,0 +1,197 @@
+blueprint:
+  name: Exhaust fan – follow Bambu Lab printer (laser / heating / cooling)
+  description: >
+    Controls an exhaust fan (e.g. the ESPHome "exhaust-fan" controller) from a Bambu Lab
+    printer via the ha-bambulab integration (HACS).
+
+    * Laser job → laser speed.
+    * Print in **heating** air-duct mode (ASA/ABS/PC/PA, closed chamber) → heating speed
+      (low, so the chamber stays warm but fumes from door gaps go into the duct).
+    * Print in **cooling** mode (PLA/PETG/TPU) → cooling speed (0 = off).
+    * After a heating-mode print → run-on speed for N minutes (printer vents the chamber
+      at the end – most fumes come out then). After a laser job → laser speed for N minutes.
+    * A new job cancels the run-on.
+    * Works with a custom end G-code that purges the chamber after ASA (air duct switches
+      heating → cooling while the job is still running): the fan goes to run-on speed
+      for the purge instead of turning off. See docs/h2c-end-gcode-purge.md.
+
+    Uses `airduct_mode` instead of the active filament: while the H2 printers detect
+    the hotend / change filament, the active AMS tray flickers through all slots.
+    Tested with a Bambu Lab H2C.
+  domain: automation
+  source_url: https://github.com/FilipWyka/exhaust-fan-esphome/blob/main/blueprints/exhaust_fan_bambu_lab.yaml
+  input:
+    entities:
+      name: Entities
+      input:
+        exhaust_fan:
+          name: Exhaust fan
+          selector:
+            entity:
+              domain: fan
+        print_status:
+          name: Printer – print status
+          description: ha-bambulab sensor, e.g. sensor.<printer>_print_status
+          selector:
+            entity:
+              domain: sensor
+        airduct_mode:
+          name: Printer – air duct mode
+          description: ha-bambulab sensor, e.g. sensor.<printer>_airduct_mode (cooling / heating / laser)
+          selector:
+            entity:
+              domain: sensor
+        tool_module:
+          name: Printer – tool module (optional)
+          description: ha-bambulab sensor, e.g. sensor.<printer>_tool_module (laser10 / laser40 / cutter). Leave empty if your printer has none.
+          default: []
+          selector:
+            entity:
+              domain: sensor
+    speeds:
+      name: Speeds
+      input:
+        laser_speed:
+          name: Laser job speed
+          default: 100
+          selector:
+            number: {min: 10, max: 100, step: 5, unit_of_measurement: "%"}
+        heating_speed:
+          name: Heating mode (ASA/ABS) print speed
+          description: 0 = off. 40 % worked well on an H2C printing ASA.
+          default: 40
+          selector:
+            number: {min: 0, max: 100, step: 5, unit_of_measurement: "%"}
+        cooling_speed:
+          name: Cooling mode (PLA/PETG/TPU) print speed
+          description: 0 = off.
+          default: 0
+          selector:
+            number: {min: 0, max: 100, step: 5, unit_of_measurement: "%"}
+        runon_speed:
+          name: Run-on speed after a heating-mode print
+          default: 100
+          selector:
+            number: {min: 0, max: 100, step: 5, unit_of_measurement: "%"}
+        runon_minutes:
+          name: Run-on time after the job
+          description: Applies after heating-mode prints and laser jobs. 0 = turn off immediately.
+          default: 15
+          selector:
+            number: {min: 0, max: 60, step: 1, unit_of_measurement: min}
+    alerts:
+      name: Alerts
+      collapsed: true
+      input:
+        offline_actions:
+          name: Actions when the fan is unavailable during a laser job
+          description: e.g. a mobile app notification. Default does nothing.
+          default:
+            - stop: Exhaust fan unavailable
+          selector:
+            action: {}
+
+mode: restart
+max_exceeded: silent
+
+variables:
+  fan: !input exhaust_fan
+  status_entity: !input print_status
+  airduct_entity: !input airduct_mode
+  tool_entity: !input tool_module
+  laser_pct: !input laser_speed
+  heating_pct: !input heating_speed
+  cooling_pct: !input cooling_speed
+  runon_pct: !input runon_speed
+  runon_min: !input runon_minutes
+  active_states: [running, prepare, pause]
+  end_states: [finish, failed, idle]
+
+triggers:
+  - trigger: state
+    entity_id: !input print_status
+    to: null
+    id: job
+  - trigger: state
+    entity_id: !input airduct_mode
+    to: null
+    id: detect
+  - trigger: homeassistant
+    event: start
+    id: start
+
+conditions:
+  # Only job status changes may interrupt a running run-on; air duct changes count only
+  # during a job (after a heating print the duct stays in "heating" for a few minutes).
+  - condition: template
+    value_template: "{{ trigger.id == 'job' or states(status_entity) in active_states }}"
+
+actions:
+  - variables:
+      active: "{{ states(status_entity) in active_states }}"
+      airduct: "{{ states(airduct_entity) }}"
+      laser: >-
+        {{ airduct == 'laser' or
+           (tool_entity | length > 0 and states(tool_entity) in ['laser10', 'laser40']) }}
+      job_ended: >-
+        {{ trigger.id == 'job' and trigger.from_state is not none
+           and trigger.from_state.state in active_states
+           and trigger.to_state.state in end_states }}
+  - choose:
+      - alias: Laser job
+        conditions: "{{ active and laser }}"
+        sequence:
+          - if: "{{ is_state(fan, 'unavailable') }}"
+            then: !input offline_actions
+            else:
+              - action: fan.turn_on
+                target: {entity_id: "{{ fan }}"}
+                data: {percentage: "{{ laser_pct }}"}
+      - alias: Heating-mode print
+        conditions: "{{ active and airduct == 'heating' }}"
+        sequence:
+          - if: "{{ heating_pct | int > 0 }}"
+            then:
+              - action: fan.turn_on
+                target: {entity_id: "{{ fan }}"}
+                data: {percentage: "{{ heating_pct }}"}
+            else:
+              - action: fan.turn_off
+                target: {entity_id: "{{ fan }}"}
+      - alias: End G-code chamber purge after a heating-mode print (heating -> cooling while running)
+        conditions: >-
+          {{ active and trigger.id == 'detect' and trigger.from_state is not none
+             and trigger.from_state.state == 'heating' and airduct == 'cooling' }}
+        sequence:
+          - action: fan.turn_on
+            target: {entity_id: "{{ fan }}"}
+            data: {percentage: "{{ [runon_pct | int, heating_pct | int] | max }}"}
+      - alias: Cooling-mode print
+        conditions: "{{ active }}"
+        sequence:
+          - if: "{{ cooling_pct | int > 0 }}"
+            then:
+              - action: fan.turn_on
+                target: {entity_id: "{{ fan }}"}
+                data: {percentage: "{{ cooling_pct }}"}
+            else:
+              - action: fan.turn_off
+                target: {entity_id: "{{ fan }}"}
+      - alias: Job ended while the fan was running (heating print, purge or laser) -> run-on
+        conditions: >-
+          {{ job_ended and runon_min | int > 0
+             and (airduct in ['heating', 'laser'] or laser or is_state(fan, 'on')) }}
+        sequence:
+          - action: fan.turn_on
+            target: {entity_id: "{{ fan }}"}
+            data:
+              percentage: "{{ laser_pct if laser else runon_pct }}"
+          - delay:
+              minutes: "{{ runon_min | int }}"
+          - action: fan.turn_off
+            target: {entity_id: "{{ fan }}"}
+      - alias: Any other job end -> off
+        conditions: "{{ job_ended }}"
+        sequence:
+          - action: fan.turn_off
+            target: {entity_id: "{{ fan }}"}
