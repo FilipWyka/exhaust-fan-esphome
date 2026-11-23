@@ -20,6 +20,8 @@ blueprint:
     Tested with a Bambu Lab H2C.
   domain: automation
   source_url: https://github.com/FilipWyka/exhaust-fan-esphome/blob/main/blueprints/exhaust_fan_bambu_lab.yaml
+  homeassistant:
+    min_version: 2024.6.0
   input:
     entities:
       name: Entities
